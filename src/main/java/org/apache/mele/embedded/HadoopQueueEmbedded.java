@@ -23,6 +23,7 @@ import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Field;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.Collection;
@@ -180,6 +181,33 @@ public class HadoopQueueEmbedded implements HadoopQueue {
         _readerPointer.recordPosition(_consumer.get());
       }
       _readLock.unlock();
+    }
+  }
+
+  public void writeByteBuffers(Collection<ByteBuffer> messages) throws IOException {
+    if (!isWritable()) {
+      throw new IOException("Not open for writing.");
+    }
+    _writeLock.lock();
+    try {
+      int bufSize = 1024;
+      byte[] buf = new byte[bufSize];
+      for (ByteBuffer message : messages) {
+        int remaining = message.remaining();
+        _queueOutputStream.writeInt(remaining);
+        while (remaining > 0) {
+          int len = Math.min(remaining, bufSize);
+          message.get(buf, 0, len);
+          _queueOutputStream.write(buf, 0, len);
+          remaining -= len;
+        }
+
+      }
+      flushAndSync(_queueOutputStream);
+      _producer.set(_queueOutputStream.getPos());
+      checkForWriteClosing();
+    } finally {
+      _writeLock.unlock();
     }
   }
 
